@@ -1,0 +1,187 @@
+#!/bin/bash
+
+# Name: Tanner Quesenberry
+# Date: 7/10/17
+
+# References:
+# Piazza disussions, Class lecture materials
+# Check if file exists:	https://www.cyberciti.biz/tips/find-out-if-file-exists-with-conditional-expressions.html
+# Bash syntax basics:	https://learnxinyminutes.com/docs/bash/
+# File test operators:	http://tldp.org/LDP/abs/html/fto.html
+# Bash command manual pages:	https://ss64.com/bash/
+
+# Create temp files
+datafilepath="datafile$$"
+tempRow="temprowfile$$"
+colAvg="colAvg$$"
+colMed="colMed$$"
+
+# Trap command for interrupts
+trap "rm -f $tempRow $colAvg $colMed $datafilepath; exit 1" INT HUP TERM
+
+# Initial error checking
+# Check for correct number of parameters 
+if [[ $# == 0 ]] || [[ $# > 2 ]]
+then
+    # Output error to stderr/exit
+    (>&2 echo "./stats {-rows|-cols} [file]")
+    exit 1
+fi
+
+# Check that row/col input is correct/given
+if [[ $1 != -r* ]]
+then
+    if [[ $1 != -c* ]]
+    then
+        # Output error to stderr/exit
+        (>&2 echo "./stats {-rows|-cols} [file]")
+        exit 1
+    fi
+fi
+
+
+# Check if input is stdin or file
+if [[ $# == 1 ]]
+then
+    cat > "$datafilepath"
+elif [[ $# == 2 ]]
+then
+
+    # Check if file exists
+    if [ ! -e $2 ]
+    then
+        # Output error to stderr/exit
+        (>&2 echo "./stats: cannot read $2")
+        exit 1
+    # Check if file is readable
+    elif [ ! -r $2 ]
+    then
+        # Output error to stderr/exit
+        (>&2 echo "./stats: cannot read $2")
+        exit 1
+    # Check if file is empty
+    elif [ ! -s $2 ]
+    then
+        # Exit program with no error
+        exit 0
+    fi
+
+    cat $2 >> $datafilepath
+fi
+
+# If processing columns, turn into rows
+if [[ $1 == -c* ]]
+then
+    curCol=1
+    numsInRow=0
+    
+    # Obtain 1st line in file
+    firstLine=$(head -n 1 $datafilepath)
+
+    # Get total numbers per line for looping
+    numsInRow=$(echo $firstLine | wc -w)
+    # Add 1 to be able to access all columns
+    numsInRow=$(expr $numsInRow + 1)
+
+    # Loop through columns of file, appending each as a row to temp file
+    while [ $curCol -ne $numsInRow  ]
+    do
+        cut -f $curCol $datafilepath | tr '\n' '\t' >> $tempRow
+        echo >> $tempRow
+        curCol=$(expr $curCol + 1)
+    done
+   
+    # Process the newly made rows
+    echo "Average:" > $colAvg
+    echo "Median:" > $colMed
+    while read lines
+    do
+        sum=0
+        count=0
+        avg=0
+        med=0
+
+        # Get sum and total numbers for current row
+        for i in $lines
+        do
+            sum=$(expr $sum + $i)
+            count=$(expr $count + 1)
+        done
+
+        # Calculate average 
+        avg=$(expr $(expr $sum + $(expr $count / 2)) / $count)
+
+        # Calculate median gettting number count
+        middle=$(echo $lines | wc -w)
+        
+        # Get the middle number position
+        middle=$(expr $(expr $middle / 2) + 1)
+        
+        # Turn line to rows, sort them, get all lines up 
+        # median line, get last line which is the median
+        med=$(echo  $lines | tr ' ' '\n' | sort -n | head -n $middle | tail -n 1)
+        
+        # Append average and median to temp files
+        echo -en "$avg\t" >> $colAvg
+        echo -en "$med\t" >> $colMed
+
+    done < $tempRow
+
+    # Output results of columns after adding a newline to file
+    echo >> $colAvg
+    echo >> $colMed
+    cat $colAvg
+    cat $colMed
+fi
+
+# Process data based on rows selection
+if [[ $1 == -r* ]];
+then
+    echo -e "Average\tMedian"
+
+    # Read each line of data in file
+    while read oneline
+    do
+
+        # Running totals for each row
+        sum=0
+        count=0
+        avg=0
+        med=0
+
+        # Get sum and total numbers for current row
+        for i in $oneline
+        do
+            sum=$(expr $sum + $i)
+            count=$(expr $count + 1)
+        done
+
+        # Calulate average
+        avg=$(expr $(expr $sum + $(expr $count / 2)) / $count)
+    
+        # Calculate median gettting number count
+        middle=$(echo $oneline | wc -w)
+        
+        # Get the middle number position
+        middle=$(expr $(expr $middle / 2) + 1)
+        
+        # Turn line to rows, sort them, get all lines up 
+        # median line, get last line which is the median
+        med=$(echo  $oneline | tr ' ' '\n' | sort -n | head -n $middle | tail -n 1)
+        
+        echo -e "$avg\t$med"
+    done < $datafilepath
+fi
+
+
+# Remove temp files
+rm $datafilepath
+
+if [[ $1 == -c* ]]
+then
+    rm $tempRow
+    rm $colAvg
+    rm $colMed
+fi
+
+exit 0
